@@ -269,6 +269,41 @@ backend ~A_be
    (mrun (format nil "machinectl shell ~A@ -- systemctl --user restart invidious-db invidious"
                  user))))
 
+
+(defprop quadlets-written :posix (user home data-mountpoint config-path)
+  "Write all invidious quadlet unit files into USER's systemd container
+   directory. The service account UID is read at apply time via getent,
+   after ROOTLESS-SERVICE-ACCOUNT has run, so PublishPort is always correct."
+  (:desc (format nil "Invidious quadlet units written for ~A" user))
+  (:apply
+   (let ((quadlet-dir (format nil "~A/.config/containers/systemd" home)))
+     (consfigurator.property.file:containing-directory-exists
+      (format nil "~A/invidious.network" quadlet-dir))
+     (write-remote-file
+      (format nil "~A/invidious.network" quadlet-dir)
+      (cinix-write-string (invidious-network-sections)))
+     (write-remote-file
+      (format nil "~A/invidious-db.container" quadlet-dir)
+      (cinix-write-string (invidious-db-container-sections data-mountpoint)))
+     (write-remote-file
+      (format nil "~A/invidious.container" quadlet-dir)
+      (cinix-write-string (invidious-container-sections config-path))))))
+
+
+(defprop haproxy-vhost-written :posix ()
+  "Write the HAProxy vhost config for this service. Called after
+   ROOTLESS-SERVICE-ACCOUNT has run so service-account-uid resolves
+   correctly, then reloads HAProxy if the content changed."
+  (:desc (format nil "HAProxy vhost written for ~A" *haproxy-fqdn*))
+  (:apply
+   (let* ((cfg-path (format nil "/etc/haproxy/conf.d/~A.cfg" *haproxy-vhost-name*))
+          (new-content (haproxy-vhost-config))
+          (current (when (probe-file cfg-path)
+                     (uiop:read-file-string cfg-path))))
+     (unless (equal new-content current)
+       (write-remote-file cfg-path new-content)
+       (consfigurator.property.service:reloaded "haproxy")))))
+
 (defhost invidious-host (:deploy (:local))
   "The Invidious stack's host: two AES-256-GCM-encrypted ZFS datasets,
    the rootless service account and its linger, the generated DB secret,
@@ -285,21 +320,9 @@ backend ~A_be
   (images-pulled *service-user*
                   "oci.dapla.net/library/postgres:16-alpine"
                   "oci.dapla.net/ghcr.io/iv-org/invidious:latest")
-  (has-content
-   (format nil "~A/.config/containers/systemd/invidious.network" *home-mountpoint*)
-   (cinix-write-string (invidious-network-sections)))
-  (has-content
-   (format nil "~A/.config/containers/systemd/invidious-db.container" *home-mountpoint*)
-   (cinix-write-string (invidious-db-container-sections *data-mountpoint*)))
-  (has-content
-   (format nil "~A/.config/containers/systemd/invidious.container" *home-mountpoint*)
-   (cinix-write-string (invidious-container-sections *config-path*)))
+  (quadlets-written *service-user* *home-mountpoint* *data-mountpoint* *config-path*)
   (quadlets-activated *service-user*)
-  (on-change
-      (has-content
-       (format nil "/etc/haproxy/conf.d/~A.cfg" *haproxy-vhost-name*)
-       (haproxy-vhost-config))
-    (reloaded "haproxy")))
+  (haproxy-vhost-written))
 
 (defun deploy-app ()
   "Provision the Invidious stack via INVIDIOUS-HOST (Consfigurator, :local

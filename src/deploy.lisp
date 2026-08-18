@@ -24,6 +24,7 @@
            :rootless-service-account
            :images-pulled :quadlets-activated
            :cinix-write-string
+           :*port-base*
            :service-account-uid
            :quadlets-written
            :haproxy-vhost-written
@@ -50,6 +51,11 @@
   "Generated once; holds POSTGRES_PASSWORD for the invidious database.")
 (defparameter *haproxy-fqdn* "watch.dapla.net")
 (defparameter *haproxy-vhost-name* "watch")
+
+(defparameter *port-base* 10000
+  "Added to the service account UID to derive the loopback PublishPort.
+   Keeps all ports above 1024 and clear of well-known service ranges.")
+
 (defparameter *config-path* "/var/lib/invidious/.config/invidious/config.yml"
   "Invidious application configuration file.")
 
@@ -215,7 +221,7 @@ admins:~%  - denzuko~%registration_enabled: false~%login_enabled: true~%statisti
   "Cinix AST for invidious.container: binds to 127.0.0.1 only, mounts
    the generated config.yml read-only. The loopback port is the service
    account UID, per dapla.net convention."
-  (let ((port (service-account-uid *service-user*)))
+  (let ((port (+ (service-account-uid *service-user*) *port-base*)))
     `(("Unit" . (("Description" . "Invidious YouTube frontend")
                  ("After"       . "network-online.target invidious-db.service")
                  ("Wants"       . "network-online.target")
@@ -237,7 +243,7 @@ admins:~%  - denzuko~%registration_enabled: false~%login_enabled: true~%statisti
   "HAProxy vhost text: HTTP redirect, TLS frontend with security headers,
    backend health-checked against invidious on loopback. Backend port is
    the service account UID, per dapla.net convention."
-  (let ((port (service-account-uid *service-user*)))
+  (let ((port (+ (service-account-uid *service-user*) *port-base*)))
   (format nil
 "frontend ~A_http
   bind *:80
@@ -306,7 +312,7 @@ backend ~A_be
   (:desc (format nil "HAProxy vhost written for ~A" *haproxy-fqdn*))
   (:check (null (service-account-uid *service-user*)))
   (:apply
-   (let ((port (service-account-uid *service-user*)))
+   (let ((port (+ (service-account-uid *service-user*) *port-base*)))
      (unless port
        (consfigurator:inapplicable-property
         "Service account ~A does not exist; cannot determine port."

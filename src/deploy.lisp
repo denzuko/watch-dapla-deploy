@@ -60,7 +60,7 @@
   (:check (remote-exists-p path))
   (:apply
    (containing-directory-exists path)
-   (let ((key (stripln (mrun "openssl" "rand" "-hex" "32"))))
+   (let ((key (mrun "openssl" "rand" "32")))
      (write-remote-file path key :mode #o600))))
 
 (defun zfs-create-command (dataset mountpoint keyfile)
@@ -148,12 +148,12 @@ admins:~%  - denzuko~%registration_enabled: false~%login_enabled: true~%statisti
   (:check
    (every (lambda (image)
             (zerop (mrun :for-exit
-                    (format nil "machinectl shell ~A@ -- podman image exists ~A"
+                    (format nil "machinectl shell ~A@ /usr/bin/podman image exists ~A"
                             user image))))
           images))
   (:apply
    (dolist (image images)
-     (mrun (format nil "machinectl shell ~A@ -- podman pull ~A" user image)))))
+     (mrun (format nil "machinectl shell ~A@ /usr/bin/podman pull ~A" user image)))))
 
 (defun cinix-write-string (sections)
   "Serialize an alist of (section-name . ((key . value) ...)) into
@@ -273,8 +273,8 @@ backend ~A_be
    quadlet-generated services via `machinectl shell`."
   (:desc (format nil "Quadlets activated for ~A" user))
   (:apply
-   (mrun (format nil "machinectl shell ~A@ -- systemctl --user daemon-reload" user))
-   (mrun (format nil "machinectl shell ~A@ -- systemctl --user restart invidious-db invidious"
+   (mrun (format nil "machinectl shell ~A@ /usr/bin/systemctl --user daemon-reload" user))
+   (mrun (format nil "machinectl shell ~A@ /usr/bin/systemctl --user restart invidious-db invidious"
                  user))))
 
 
@@ -315,6 +315,7 @@ backend ~A_be
             (current (when (probe-file cfg-path)
                        (uiop:read-file-string cfg-path))))
        (unless (equal new-content current)
+         (containing-directory-exists cfg-path)
          (write-remote-file cfg-path new-content)
          (consfigurator.property.service:reloaded "haproxy"))))))
 

@@ -51,10 +51,6 @@
 (defparameter *haproxy-fqdn* "watch.dapla.net")
 (defparameter *haproxy-vhost-name* "watch")
 
-(defparameter *port-base* 10000
-  "Added to the service account UID to derive the loopback PublishPort.
-   Keeps all ports above 1024 and clear of well-known service ranges.")
-
 (defparameter *config-path* "/var/lib/invidious/.config/invidious/config.yml"
   "Invidious application configuration file.")
 
@@ -173,10 +169,26 @@ admins:~%  - denzuko~%registration_enabled: false~%login_enabled: true~%statisti
         (format s "~A=~A~%" (car kv) (cdr kv)))
       (format s "~%"))))
 
+(defun service-account-uid (username)
+  "Read USERNAME's UID from the local passwd database via getent, at
+   property apply time after ROOTLESS-SERVICE-ACCOUNT has run. The UID
+   is used as the loopback PublishPort, per dapla.net convention.
+   Returns NIL if the account does not yet exist, allowing callers to
+   skip operations that depend on the UID."
+  (let ((raw (with-output-to-string (s)
+               (uiop:run-program (list "getent" "passwd" username)
+                                 :output s
+                                 :ignore-error-status t))))
+    (when (and raw (plusp (length (string-trim '(#\Newline #\Space) raw))))
+      (parse-integer
+       (third
+        (uiop:split-string
+         (string-trim '(#\Newline #\Space) raw)
+         :separator '(#\:)))))))
 
 (defun invidious-network-sections ()
   "Cinix AST for invidious.network: internal-only network."
-  '(("Network" . (("NetworkName" . "watch")
+  '(("Network" . (("NetworkName" . "invidious")
                   ("Driver"      . "bridge")
                   ("Subnet"      . "10.89.2.4/29")
                   ("Gateway"     . "10.89.2.5")))))
@@ -206,14 +218,13 @@ admins:~%  - denzuko~%registration_enabled: false~%login_enabled: true~%statisti
   "Cinix AST for invidious.container: binds to 127.0.0.1 only, mounts
    the generated config.yml read-only. The loopback port is the service
    account UID, per dapla.net convention."
-      `(("Unit" . (("Description" . "Invidious YouTube frontend")
+  `(("Unit" . (("Description" . "Invidious YouTube frontend")
                  ("After"       . "network-online.target invidious-db.service")
                  ("Wants"       . "network-online.target")
                  ("Requires"    . "invidious-db.service")))
       ("Container" . (("Image"         . "oci.dapla.net/ghcr.io/iv-org/invidious:latest")
                       ("ContainerName" . "invidious")
                       ("AutoUpdate"    . "registry")
-                      ("PublishPort"   . ,(format nil "127.0.0.1:~A:~A" port port))
                       ("Volume"        . ,(format nil "~A:/invidious/config/config.yml:ro,Z"
                                                   config-path))
                       ("Network"       . "invidious.network")
@@ -228,48 +239,69 @@ admins:~%  - denzuko~%registration_enabled: false~%login_enabled: true~%statisti
       ("Install" . (("WantedBy" . "default.target"))))))
 
 (defun haproxy-vhost-config ()
-  "HAProxy vhost configuration for watch.dapla.net.
-   Backend uses the netavark bridge gateway IP 10.89.2.5 on the
-   container's natural internal port. No loopback, no port arithmetic.
-
-;;; dapla.net netavark service network allocation
-;;; All subnets within 10.89.2.0/26 (64 addresses).
-;;; Existing host networks: podman1=10.89.0.0/24, podman2=10.89.1.0/24.
-;;;
-;;; Service       Network     Subnet           Gateway      Prefix  Containers
-;;; find          podman3     10.89.2.0/30     10.89.2.1    /30     1
-;;; watch         podman4     10.89.2.4/29     10.89.2.5    /29     2
-;;; meet          podman5     10.89.2.12/29    10.89.2.13   /29     3
-;;; feed          podman6     10.89.2.20/30    10.89.2.21   /30     1
-;;; save          podman7     10.89.2.24/30    10.89.2.25   /30     1
-;;; burn          podman8     10.89.2.28/30    10.89.2.29   /30     1
-;;; link          podman9     10.89.2.32/30    10.89.2.33   /30     1
-;;; support       podman10    10.89.2.36/29    10.89.2.37   /29     4
-  "
+  "HAProxy vhost text: HTTP redirect, TLS frontend with security headers,
+   backend health-checked against invidious on loopback. Backend port is
+   the service account UID, per dapla.net convention."
+  (let ((port (+ (service-account-uid *service-user*) *port-base*)))
   (format nil
-"frontend watch_http
+"frontend ~A_http
   bind *:80
-  acl host_watch hdr(host) -i watch.dapla.net
-  redirect scheme https code 301 if host_watch
+  acl host_~A hdr(host) -i ~A
+  redirect scheme https code 301 if host_~A
 
-frontend watch_https
-  bind *:443 ssl crt /etc/haproxy/certs/watch.dapla.net.pem alpn h2,http/1.1
-  acl host_watch hdr(host) -i watch.dapla.net
+frontend ~A_https
+  bind *:443 ssl crt /etc/haproxy/certs/~A.pem alpn h2,http/1.1
+  acl host_~A hdr(host) -i ~A
   http-response set-header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\"
   http-response set-header X-Content-Type-Options nosniff
   http-response set-header X-Frame-Options SAMEORIGIN
   http-response set-header Referrer-Policy strict-origin-when-cross-origin
-  http-response set-header Permissions-Policy \"interest-cohort=()\""
-  use_backend watch_be if host_watch
+  http-response set-header Permissions-Policy \"interest-cohort=()\"
+  use_backend ~A_be if host_~A
 
-backend watch_be
+backend ~A_be
   balance roundrobin
   option httpchk GET /
   http-check expect status 200
   timeout connect 5s
   timeout server  60s
   server invidious 10.89.2.5:3000 check inter 10s rise 2 fall 3
-"))
+"
+          *haproxy-vhost-name* *haproxy-vhost-name* *haproxy-fqdn* *haproxy-vhost-name*
+          *haproxy-vhost-name* *haproxy-fqdn*
+          *haproxy-vhost-name* *haproxy-fqdn*
+          *haproxy-vhost-name* *haproxy-vhost-name*
+          *haproxy-vhost-name*))
+
+(defprop quadlets-activated :posix (user)
+  "Reload USER's user-scope systemd daemon and restart the invidious
+   quadlet-generated services via `machinectl shell`."
+  (:desc (format nil "Quadlets activated for ~A" user))
+  (:apply
+   (mrun (format nil "machinectl shell ~A@ /usr/bin/systemctl --user daemon-reload" user))
+   (mrun (format nil "machinectl shell ~A@ /usr/bin/systemctl --user restart invidious-db invidious"
+                 user))))
+
+
+(defprop quadlets-written :posix (user home data-mountpoint config-path)
+  "Write all invidious quadlet unit files into USER's systemd container
+   directory. The service account UID is read at apply time via getent,
+   after ROOTLESS-SERVICE-ACCOUNT has run, so PublishPort is always correct."
+  (:desc (format nil "Invidious quadlet units written for ~A" user))
+  (:apply
+   (let ((quadlet-dir (format nil "~A/.config/containers/systemd" home)))
+     (consfigurator.property.file:containing-directory-exists
+      (format nil "~A/invidious.network" quadlet-dir))
+     (write-remote-file
+      (format nil "~A/invidious.network" quadlet-dir)
+      (cinix-write-string (invidious-network-sections)))
+     (write-remote-file
+      (format nil "~A/invidious-db.container" quadlet-dir)
+      (cinix-write-string (invidious-db-container-sections data-mountpoint)))
+     (write-remote-file
+      (format nil "~A/invidious.container" quadlet-dir)
+      (cinix-write-string (invidious-container-sections config-path))))))
+
 
 (defprop haproxy-vhost-written :posix ()
   "Write the HAProxy vhost config for this service. Skipped when the
@@ -278,7 +310,8 @@ backend watch_be
   (:desc (format nil "HAProxy vhost written for ~A" *haproxy-fqdn*))
   (:check nil)
   (:apply
-        (unless port
+   (let ((port (+ (service-account-uid *service-user*) *port-base*)))
+     (unless port
        (consfigurator:inapplicable-property
         "Service account ~A does not exist; cannot determine port."
         *service-user*))

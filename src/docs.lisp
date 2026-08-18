@@ -13,8 +13,8 @@
 
 
 (defsection @network-allocation (:title "Network Allocation")
-  "The watch.dapla.net service runs on netavark bridge network
-   podman4 (10.89.2.4/29), gateway 10.89.2.5.
+  "The watch.dapla.net service runs on netavark bridge podman4 (10.89.2.4/29),
+   gateway 10.89.2.5.
 
    Full dapla.net VLSM allocation (10.89.2.0/26):
 

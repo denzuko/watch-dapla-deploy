@@ -169,23 +169,6 @@ admins:~%  - denzuko~%registration_enabled: false~%login_enabled: true~%statisti
         (format s "~A=~A~%" (car kv) (cdr kv)))
       (format s "~%"))))
 
-(defun service-account-uid (username)
-  "Read USERNAME's UID from the local passwd database via getent, at
-   property apply time after ROOTLESS-SERVICE-ACCOUNT has run. The UID
-   is used as the loopback PublishPort, per dapla.net convention.
-   Returns NIL if the account does not yet exist, allowing callers to
-   skip operations that depend on the UID."
-  (let ((raw (with-output-to-string (s)
-               (uiop:run-program (list "getent" "passwd" username)
-                                 :output s
-                                 :ignore-error-status t))))
-    (when (and raw (plusp (length (string-trim '(#\Newline #\Space) raw))))
-      (parse-integer
-       (third
-        (uiop:split-string
-         (string-trim '(#\Newline #\Space) raw)
-         :separator '(#\:)))))))
-
 (defun invidious-network-sections ()
   "Cinix AST for invidious.network: internal-only network."
   '(("Network" . (("NetworkName" . "invidious")
@@ -218,7 +201,8 @@ admins:~%  - denzuko~%registration_enabled: false~%login_enabled: true~%statisti
   "Cinix AST for invidious.container: binds to 127.0.0.1 only, mounts
    the generated config.yml read-only. The loopback port is the service
    account UID, per dapla.net convention."
-  `(("Unit" . (("Description" . "Invidious YouTube frontend")
+  (let ((port (+ (service-account-uid *service-user*) *port-base*)))
+    `(("Unit" . (("Description" . "Invidious YouTube frontend")
                  ("After"       . "network-online.target invidious-db.service")
                  ("Wants"       . "network-online.target")
                  ("Requires"    . "invidious-db.service")))
@@ -271,7 +255,7 @@ backend ~A_be
           *haproxy-vhost-name* *haproxy-fqdn*
           *haproxy-vhost-name* *haproxy-fqdn*
           *haproxy-vhost-name* *haproxy-vhost-name*
-          *haproxy-vhost-name*))
+          *haproxy-vhost-name*))))
 
 (defprop quadlets-activated :posix (user)
   "Reload USER's user-scope systemd daemon and restart the invidious

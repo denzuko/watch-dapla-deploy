@@ -197,7 +197,7 @@ admins:~%  - denzuko~%registration_enabled: false~%login_enabled: true~%statisti
                ("After"       . "network-online.target invidious-db.service")
                ("Wants"       . "network-online.target")
                ("Requires"    . "invidious-db.service")))
-    ("Container" . (("Image"         . "oci.dapla.net/invidious/invidious:latest")
+    ("Container" . (("Image"         . "oci.dapla.net/ghcr.io/iv-org/invidious:latest")
                     ("ContainerName" . "invidious")
                     ("AutoUpdate"    . "registry")
                     ("PublishPort"   . "127.0.0.1:3000:3000")
@@ -267,7 +267,7 @@ backend ~A_be
   (invidious-config *config-path* *service-user* *haproxy-fqdn* *secrets-path*)
   (images-pulled *service-user*
                   "oci.dapla.net/library/postgres:16-alpine"
-                  "oci.dapla.net/invidious/invidious:latest")
+                  "oci.dapla.net/ghcr.io/iv-org/invidious:latest")
   (has-content
    (format nil "~A/.config/containers/systemd/invidious.network" *home-mountpoint*)
    (cinix-write-string (invidious-network-sections)))

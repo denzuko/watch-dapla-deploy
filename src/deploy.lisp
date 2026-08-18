@@ -24,6 +24,9 @@
            :rootless-service-account
            :images-pulled :quadlets-activated
            :cinix-write-string
+           :service-account-uid
+           :quadlets-written
+           :haproxy-vhost-written
            :invidious-container-sections
            :invidious-db-container-sections
            :invidious-network-sections

@@ -164,6 +164,18 @@ admins:~%  - denzuko~%registration_enabled: false~%login_enabled: true~%statisti
         (format s "~A=~A~%" (car kv) (cdr kv)))
       (format s "~%"))))
 
+(defun service-account-uid (username)
+  "Read USERNAME's UID from the local passwd database via getent, at
+   property apply time after ROOTLESS-SERVICE-ACCOUNT has run. The UID
+   is used as the loopback PublishPort, per dapla.net convention."
+  (parse-integer
+   (third
+    (uiop:split-string
+     (string-trim '(#\Newline #\Space)
+       (with-output-to-string (s)
+         (uiop:run-program (list "getent" "passwd" username) :output s)))
+     :separator '(#\:)))))
+
 (defun invidious-network-sections ()
   "Cinix AST for invidious.network: internal-only network."
   '(("Network" . (("NetworkName" . "invidious")
@@ -192,27 +204,31 @@ admins:~%  - denzuko~%registration_enabled: false~%login_enabled: true~%statisti
 
 (defun invidious-container-sections (config-path)
   "Cinix AST for invidious.container: binds to 127.0.0.1 only, mounts
-   the generated config.yml read-only."
-  `(("Unit" . (("Description" . "Invidious YouTube frontend")
-               ("After"       . "network-online.target invidious-db.service")
-               ("Wants"       . "network-online.target")
-               ("Requires"    . "invidious-db.service")))
-    ("Container" . (("Image"         . "oci.dapla.net/ghcr.io/iv-org/invidious:latest")
-                    ("ContainerName" . "invidious")
-                    ("AutoUpdate"    . "registry")
-                    ("PublishPort"   . "127.0.0.1:3000:3000")
-                    ("Volume"        . ,(format nil "~A:/invidious/config/config.yml:ro,Z"
-                                                config-path))
-                    ("Network"       . "invidious.network")
-                    ("Label"         . "io.containers.autoupdate=registry")))
-    ("Service" . (("Restart"         . "on-failure")
-                  ("TimeoutStartSec" . "120")
-                  ("TimeoutStopSec"  . "30")))
-    ("Install" . (("WantedBy" . "default.target")))))
+   the generated config.yml read-only. The loopback port is the service
+   account UID, per dapla.net convention."
+  (let ((port (service-account-uid *service-user*)))
+    `(("Unit" . (("Description" . "Invidious YouTube frontend")
+                 ("After"       . "network-online.target invidious-db.service")
+                 ("Wants"       . "network-online.target")
+                 ("Requires"    . "invidious-db.service")))
+      ("Container" . (("Image"         . "oci.dapla.net/ghcr.io/iv-org/invidious:latest")
+                      ("ContainerName" . "invidious")
+                      ("AutoUpdate"    . "registry")
+                      ("PublishPort"   . ,(format nil "127.0.0.1:~A:~A" port port))
+                      ("Volume"        . ,(format nil "~A:/invidious/config/config.yml:ro,Z"
+                                                  config-path))
+                      ("Network"       . "invidious.network")
+                      ("Label"         . "io.containers.autoupdate=registry")))
+      ("Service" . (("Restart"         . "on-failure")
+                    ("TimeoutStartSec" . "120")
+                    ("TimeoutStopSec"  . "30")))
+      ("Install" . (("WantedBy" . "default.target"))))))
 
 (defun haproxy-vhost-config ()
   "HAProxy vhost text: HTTP redirect, TLS frontend with security headers,
-   backend health-checked against invidious on loopback."
+   backend health-checked against invidious on loopback. Backend port is
+   the service account UID, per dapla.net convention."
+  (let ((port (service-account-uid *service-user*)))
   (format nil
 "frontend ~A_http
   bind *:80
@@ -235,13 +251,14 @@ backend ~A_be
   http-check expect status 200
   timeout connect 5s
   timeout server  60s
-  server invidious 127.0.0.1:3000 check inter 10s rise 2 fall 3
+  server invidious 127.0.0.1:~A check inter 10s rise 2 fall 3
 "
           *haproxy-vhost-name* *haproxy-vhost-name* *haproxy-fqdn* *haproxy-vhost-name*
           *haproxy-vhost-name* *haproxy-fqdn*
           *haproxy-vhost-name* *haproxy-fqdn*
           *haproxy-vhost-name* *haproxy-vhost-name*
-          *haproxy-vhost-name*))
+          *haproxy-vhost-name*
+          port)))
 
 (defprop quadlets-activated :posix (user)
   "Reload USER's user-scope systemd daemon and restart the invidious

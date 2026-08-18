@@ -201,8 +201,7 @@ admins:~%  - denzuko~%registration_enabled: false~%login_enabled: true~%statisti
   "Cinix AST for invidious.container: binds to 127.0.0.1 only, mounts
    the generated config.yml read-only. The loopback port is the service
    account UID, per dapla.net convention."
-  (let ((port (+ (service-account-uid *service-user*) *port-base*)))
-    `(("Unit" . (("Description" . "Invidious YouTube frontend")
+  `(("Unit" . (("Description" . "Invidious YouTube frontend")
                  ("After"       . "network-online.target invidious-db.service")
                  ("Wants"       . "network-online.target")
                  ("Requires"    . "invidious-db.service")))
@@ -294,12 +293,7 @@ backend ~A_be
   (:desc (format nil "HAProxy vhost written for ~A" *haproxy-fqdn*))
   (:check nil)
   (:apply
-   (let ((port (+ (service-account-uid *service-user*) *port-base*)))
-     (unless port
-       (consfigurator:inapplicable-property
-        "Service account ~A does not exist; cannot determine port."
-        *service-user*))
-     (let* ((cfg-path (format nil "/etc/haproxy/conf.d/~A.cfg" *haproxy-vhost-name*))
+   (let* ((cfg-path (format nil "/etc/haproxy/conf.d/~A.cfg" *haproxy-vhost-name*))
             (new-content (haproxy-vhost-config))
             (current (when (probe-file cfg-path)
                        (uiop:read-file-string cfg-path))))

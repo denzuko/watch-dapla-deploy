@@ -225,7 +225,6 @@ admins:~%  - denzuko~%registration_enabled: false~%login_enabled: true~%statisti
   "HAProxy vhost text: HTTP redirect, TLS frontend with security headers,
    backend health-checked against invidious on loopback. Backend port is
    the service account UID, per dapla.net convention."
-  (let ((port (+ (service-account-uid *service-user*) *port-base*)))
   (format nil
 "frontend ~A_http
   bind *:80

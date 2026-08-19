@@ -342,10 +342,10 @@ backend ~A_be
    (mrun "loginctl" "terminate-user" user)
    (mrun "loginctl" "disable-linger" user)
    (mrun "userdel" user)
-   (mrun "zfs" "destroy" "-r" 'storage/users/invidious')
-   (mrun "zfs" "destroy" "-r" 'storage/containers/invidious')
-   (mrun "rm" "-f" '/etc/zfs-keys/invidious-users.key')
-   (mrun "rm" "-f" '/etc/zfs-keys/invidious-containers.key')))
+   (mrun "zfs" "destroy" "-r" "storage/users/invidious")
+   (mrun "zfs" "destroy" "-r" "storage/containers/invidious")
+   (mrun "rm" "-f" "/etc/zfs-keys/invidious-users.key")
+   (mrun "rm" "-f" "/etc/zfs-keys/invidious-containers.key")))
 
 (defun deploy-app ()
   "Provision the Invidious stack via INVIDIOUS-HOST (Consfigurator, :local

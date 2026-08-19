@@ -28,3 +28,10 @@ quadlets behind HAProxy at watch.dapla.net."
   :components ((:file "t/e2e"))
   :perform (asdf:test-op (op c)
              (uiop:symbol-call :fiveam :run! :watch-dapla-deploy-e2e)))
+
+(asdf:defsystem :watch-dapla-deploy/spec
+  :description "FiveAM specification tests for the quadlet specifier refactor."
+  :depends-on (:watch-dapla-deploy/deploy :fiveam)
+  :components ((:file "t/spec"))
+  :perform (asdf:test-op (op c)
+             (uiop:symbol-call :watch-dapla-deploy/spec :run-spec)))

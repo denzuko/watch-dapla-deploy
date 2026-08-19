@@ -30,6 +30,8 @@
            :zfs-encryption-key :zfs-dataset-mounted
            :rootless-service-account :images-pulled
            :cinix-write-string
+           :invidious-network-sections
+           :invidious-container-sections
            :quadlets-written :quadlets-activated
            :haproxy-vhost-config :haproxy-vhost-written
            :decommissioned))
@@ -117,14 +119,15 @@
                    ("Subnet"      . "10.89.2.4/29")
                    ("Gateway"     . "10.89.2.5")))))
 
-(defun invidious-container-sections (data-mountpoint)
+(defun invidious-container-sections ()
   "Cinix AST for watch.container. HAProxy backend: 10.89.2.5:3000."
   `(("Unit" . (("Description" . "Invidious YouTube frontend")))
     ("Container" . (("Image"         . "oci.dapla.net/ghcr.io/iv-org/invidious:latest")
                     ("ContainerName" . "invidious")
                     ("AutoUpdate"    . "registry")
                       ("Environment" . "INVIDIOUS_CONFIG_FILE=/data/config.yml")
-                    ("Volume" . ,(format nil "~A:/data:Z" data-mountpoint))
+                    ("Volume" . "%h:/var/lib/invidious:ro")
+                    ("Volume" . "/srv/%U/data:/data:Z")
                     ("Network"       . "watch.network")
                     ("Label"         . "io.containers.autoupdate=registry")
                     ("Label"         . "org.cispec.application=watch-dapla-deploy")
@@ -164,7 +167,7 @@ backend watch_be
   server invidious 10.89.2.5:3000 check inter 10s rise 2 fall 3
 "))
 
-(defprop quadlets-written :posix (user home data-mountpoint)
+(defprop quadlets-written :posix (user home)
   "Write all watch quadlet unit files into USER's systemd container directory."
   (:desc (format nil "Invidious YouTube frontend quadlet units written for ~A" user))
   (:apply
@@ -173,7 +176,7 @@ backend watch_be
      (write-remote-file (format nil "~A/watch.network" quadlet-dir)
                         (cinix-write-string (invidious-network-sections)))
      (write-remote-file (format nil "~A/watch.container" quadlet-dir)
-                        (cinix-write-string (invidious-container-sections data-mountpoint))))))
+                        (cinix-write-string (invidious-container-sections))))))
 
 (defprop quadlets-activated :posix (user)
   "Reload USER's user-scope systemd daemon and restart watch services."

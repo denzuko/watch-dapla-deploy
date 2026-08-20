@@ -44,7 +44,6 @@
 
 (defsection @quadlet-builders (:title "Quadlet Unit Builders")
   (watch-dapla-deploy/deploy:cinix-write-string               function)
-  (watch-dapla-deploy/deploy:service-account-uid              function)
   (watch-dapla-deploy/deploy:invidious-network-sections       function)
   (watch-dapla-deploy/deploy:invidious-db-container-sections  function)
   (watch-dapla-deploy/deploy:invidious-container-sections     function)
